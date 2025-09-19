@@ -146,14 +146,15 @@ describe('useTravelMaps Hook', () => {
     const originalUpdatedAt = result.current.savedMaps[0].updatedAt
 
     // Wait a moment to ensure updatedAt is different
-    setTimeout(() => {
-      act(() => {
-        result.current.updateMap(mapId!, updatedData)
-      })
+    act(() => {
+      // Small delay to ensure different timestamp
+      const now = Date.now()
+      vi.setSystemTime(now + 1000) // Add 1 second
+      result.current.updateMap(mapId!, updatedData)
+    })
 
-      expect(result.current.savedMaps[0].travelData).toEqual(updatedData)
-      expect(result.current.savedMaps[0].updatedAt.getTime()).toBeGreaterThan(originalUpdatedAt.getTime())
-    }, 1)
+    expect(result.current.savedMaps[0].travelData).toEqual(updatedData)
+    expect(result.current.savedMaps[0].updatedAt.getTime()).toBeGreaterThan(originalUpdatedAt.getTime())
   })
 
   it('preserves data integrity when saving and loading', () => {

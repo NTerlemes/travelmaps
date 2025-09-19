@@ -51,16 +51,17 @@ describe('TravelControls Component', () => {
   it('displays all travel status options', () => {
     render(<TravelControls {...mockProps} />)
 
-    expect(screen.getByText('Visited')).toBeInTheDocument()
-    expect(screen.getByText('Lived')).toBeInTheDocument()
-    expect(screen.getByText('From')).toBeInTheDocument()
-    expect(screen.getByText('Current')).toBeInTheDocument()
+    expect(screen.getAllByText('Visited')).toHaveLength(2) // Button and statistics
+    expect(screen.getAllByText('Lived there')).toHaveLength(2) // Button and statistics
+    expect(screen.getAllByText('From here')).toHaveLength(2) // Button and statistics
+    expect(screen.getAllByText('Live here now')).toHaveLength(2) // Button and statistics
   })
 
   it('calls onStatusChange when status is changed', () => {
     render(<TravelControls {...mockProps} />)
 
-    const livedButton = screen.getByText('Lived')
+    const livedButtons = screen.getAllByText('Lived there')
+    const livedButton = livedButtons[0] // Click the first one (button, not statistics)
     fireEvent.click(livedButton)
 
     expect(mockProps.onStatusChange).toHaveBeenCalledWith(TravelStatus.LIVED)

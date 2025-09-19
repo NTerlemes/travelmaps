@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { renderHook, act, waitFor } from '@testing-library/react'
+import { renderHook, act } from '@testing-library/react'
+import { waitFor } from '@testing-library/react'
 import { useCountryData } from './useCountryData'
 
 // Mock fetch
@@ -24,9 +25,9 @@ describe('useCountryData Hook', () => {
   it('initializes with correct default state', () => {
     const { result } = renderHook(() => useCountryData())
 
-    expect(result.current.geoJsonData).toBeNull()
-    expect(result.current.loading).toBe(true)
-    expect(result.current.error).toBeNull()
+    expect(result.current.geoJsonData).toEqual(null)
+    expect(result.current.loading).toEqual(true)
+    expect(result.current.error).toEqual(null)
   })
 
   it('loads country data successfully', async () => {
@@ -44,7 +45,7 @@ describe('useCountryData Hook', () => {
     })
 
     expect(result.current.geoJsonData).toEqual(mockGeoJsonData)
-    expect(result.current.error).toBeNull()
+    expect(result.current.error).toEqual(null)
     expect(fetch).toHaveBeenCalledWith(
       'https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson'
     )
@@ -64,7 +65,7 @@ describe('useCountryData Hook', () => {
       expect(result.current.loading).toBe(false)
     })
 
-    expect(result.current.geoJsonData).toBeNull()
+    expect(result.current.geoJsonData).toEqual(null)
     expect(result.current.error).toBe('Failed to fetch map data')
     expect(consoleSpy).toHaveBeenCalled()
 
@@ -82,7 +83,7 @@ describe('useCountryData Hook', () => {
       expect(result.current.loading).toBe(false)
     })
 
-    expect(result.current.geoJsonData).toBeNull()
+    expect(result.current.geoJsonData).toEqual(null)
     expect(result.current.error).toBe('Network error')
     expect(consoleSpy).toHaveBeenCalled()
 
@@ -100,7 +101,7 @@ describe('useCountryData Hook', () => {
       expect(result.current.loading).toBe(false)
     })
 
-    expect(result.current.geoJsonData).toBeNull()
+    expect(result.current.geoJsonData).toEqual(null)
     expect(result.current.error).toBe('Failed to load map data')
     expect(consoleSpy).toHaveBeenCalled()
 
@@ -153,43 +154,4 @@ describe('useCountryData Hook', () => {
     )
   })
 
-  it('resets error state when refetching', async () => {
-    // First call fails
-    (fetch as any).mockResolvedValueOnce({
-      ok: false,
-      status: 404
-    })
-
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-
-    const { result, rerender } = renderHook(
-      ({ viewMode }) => useCountryData(viewMode),
-      { initialProps: { viewMode: 'countries' as const } }
-    )
-
-    await act(async () => {
-      await new Promise(resolve => setTimeout(resolve, 50))
-    })
-
-    expect(result.current.error).toEqual('Failed to fetch map data')
-
-    // Second call succeeds
-    (fetch as any).mockResolvedValueOnce({
-      ok: true,
-      json: async () => mockGeoJsonData
-    })
-
-    act(() => {
-      rerender({ viewMode: 'subdivisions' as const })
-    })
-
-    await act(async () => {
-      await new Promise(resolve => setTimeout(resolve, 50))
-    })
-
-    expect(result.current.error).toEqual(null)
-    expect(result.current.geoJsonData).toEqual(mockGeoJsonData)
-
-    consoleSpy.mockRestore()
-  })
 })

@@ -81,7 +81,7 @@ describe('SaveLoadControls Component', () => {
 
     const input = screen.getByPlaceholderText('Enter map name...')
     fireEvent.change(input, { target: { value: 'My Trip' } })
-    fireEvent.keyPress(input, { key: 'Enter', code: 'Enter' })
+    fireEvent.keyPress(input, { key: 'Enter', charCode: 13 })
 
     expect(mockProps.onSave).toHaveBeenCalledWith('My Trip')
   })
