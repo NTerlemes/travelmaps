@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { waitFor } from '@testing-library/react'
-import { useCountryData } from './useCountryData'
+import { useCountryData, dataCache } from './useCountryData'
 
 // Mock fetch
 global.fetch = vi.fn()
@@ -20,6 +20,8 @@ const mockGeoJsonData = {
 describe('useCountryData Hook', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // Clear cache between tests
+    dataCache.clear()
   })
 
   it('initializes with correct default state', () => {
@@ -47,15 +49,17 @@ describe('useCountryData Hook', () => {
     expect(result.current.geoJsonData).toEqual(mockGeoJsonData)
     expect(result.current.error).toEqual(null)
     expect(fetch).toHaveBeenCalledWith(
-      'https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson'
+      'https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson',
+      expect.objectContaining({
+        headers: { 'Accept': 'application/json' },
+        signal: expect.any(AbortSignal)
+      })
     )
   })
 
   it('handles fetch errors correctly', async () => {
-    (fetch as any).mockResolvedValueOnce({
-      ok: false,
-      status: 404
-    })
+    // Mock all sources to fail
+    (fetch as any).mockRejectedValue(new Error('Failed to fetch map data'))
 
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
@@ -73,7 +77,8 @@ describe('useCountryData Hook', () => {
   })
 
   it('handles network errors correctly', async () => {
-    (fetch as any).mockRejectedValueOnce(new Error('Network error'))
+    // Mock all sources to fail with network error
+    (fetch as any).mockRejectedValue(new Error('Network error'))
 
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
@@ -91,7 +96,8 @@ describe('useCountryData Hook', () => {
   })
 
   it('handles unknown errors correctly', async () => {
-    (fetch as any).mockRejectedValueOnce('Unknown error')
+    // Mock all sources to fail with unknown error
+    (fetch as any).mockRejectedValue('Unknown error')
 
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
@@ -102,7 +108,7 @@ describe('useCountryData Hook', () => {
     })
 
     expect(result.current.geoJsonData).toEqual(null)
-    expect(result.current.error).toBe('Failed to load map data')
+    expect(result.current.error).toBe('Unknown fetch error')
     expect(consoleSpy).toHaveBeenCalled()
 
     consoleSpy.mockRestore()
@@ -150,7 +156,11 @@ describe('useCountryData Hook', () => {
     await waitFor(() => expect(result2.current.loading).toBe(false))
 
     expect(fetch).toHaveBeenCalledWith(
-      'https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson'
+      'https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson',
+      expect.objectContaining({
+        headers: { 'Accept': 'application/json' },
+        signal: expect.any(AbortSignal)
+      })
     )
   })
 

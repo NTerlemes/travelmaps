@@ -18,7 +18,7 @@ export const TravelMap: React.FC<TravelMapProps> = ({
   viewMode,
   onLocationClick
 }) => {
-  const { geoJsonData, loading } = useCountryData(viewMode);
+  const { geoJsonData, loading, error, retry } = useCountryData(viewMode);
   const lastClickTime = useRef<number>(0);
   const clickedFrance = useRef<boolean>(false);
 
@@ -171,6 +171,41 @@ export const TravelMap: React.FC<TravelMapProps> = ({
         color: '#666'
       }}>
         Loading map data...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: '100%',
+        padding: '20px',
+        textAlign: 'center'
+      }}>
+        <div style={{ fontSize: '18px', color: '#d32f2f', marginBottom: '16px' }}>
+          Failed to load map data
+        </div>
+        <div style={{ fontSize: '14px', color: '#666', marginBottom: '20px' }}>
+          {error}
+        </div>
+        <button
+          onClick={retry}
+          style={{
+            padding: '10px 20px',
+            fontSize: '14px',
+            backgroundColor: '#4CAF50',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer'
+          }}
+        >
+          Try Again
+        </button>
       </div>
     );
   }
