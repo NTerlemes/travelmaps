@@ -1,11 +1,11 @@
 import { MapColors, TravelStatus } from '../types';
 
 export const DEFAULT_COLORS: MapColors = {
-  [TravelStatus.NONE]: '#f8f8f8',
-  [TravelStatus.VISITED]: '#4CAF50',
-  [TravelStatus.LIVED]: '#2196F3',
-  [TravelStatus.FROM]: '#FF9800',
-  [TravelStatus.CURRENT]: '#F44336'
+  [TravelStatus.NONE]: '#e8e8e8',
+  [TravelStatus.VISITED]: '#22C55E',
+  [TravelStatus.LIVED]: '#3B82F6',
+  [TravelStatus.FROM]: '#F59E0B',
+  [TravelStatus.CURRENT]: '#EF4444'
 };
 
 export const COLOR_LABELS = {

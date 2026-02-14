@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import App from './App'
-import { TravelStatus } from './types'
 
 // Mock the hooks
 vi.mock('./hooks/useTravelMaps', () => ({

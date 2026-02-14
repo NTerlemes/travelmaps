@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { renderHook, act } from '@testing-library/react'
+import { renderHook } from '@testing-library/react'
 import { waitFor } from '@testing-library/react'
-import { useCountryData, dataCache } from './useCountryData'
+import { useCountryData, dataCache, ViewMode } from './useCountryData'
 
 // Mock fetch
 global.fetch = vi.fn()
@@ -49,7 +49,7 @@ describe('useCountryData Hook', () => {
     expect(result.current.geoJsonData).toEqual(mockGeoJsonData)
     expect(result.current.error).toEqual(null)
     expect(fetch).toHaveBeenCalledWith(
-      'https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson',
+      'https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson',
       expect.objectContaining({
         headers: { 'Accept': 'application/json' },
         signal: expect.any(AbortSignal)
@@ -121,8 +121,8 @@ describe('useCountryData Hook', () => {
     })
 
     const { result, rerender } = renderHook(
-      ({ viewMode }) => useCountryData(viewMode),
-      { initialProps: { viewMode: 'countries' as const } }
+      ({ viewMode }: { viewMode: ViewMode }) => useCountryData(viewMode),
+      { initialProps: { viewMode: 'countries' as ViewMode } }
     )
 
     await waitFor(() => {
@@ -132,7 +132,7 @@ describe('useCountryData Hook', () => {
     expect(fetch).toHaveBeenCalledTimes(1)
 
     // Change view mode
-    rerender({ viewMode: 'subdivisions' as const })
+    rerender({ viewMode: 'subdivisions' as ViewMode })
 
     expect(result.current.loading).toBe(true)
 
@@ -156,7 +156,7 @@ describe('useCountryData Hook', () => {
     await waitFor(() => expect(result2.current.loading).toBe(false))
 
     expect(fetch).toHaveBeenCalledWith(
-      'https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson',
+      'https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson',
       expect.objectContaining({
         headers: { 'Accept': 'application/json' },
         signal: expect.any(AbortSignal)

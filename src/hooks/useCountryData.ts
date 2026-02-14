@@ -12,11 +12,12 @@ interface UseCountryDataReturn {
 // Data source URLs with fallbacks
 const DATA_SOURCES = {
   countries: [
-    'https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson',
     'https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson',
+    'https://cdn.jsdelivr.net/npm/world-atlas@3/countries-110m.json',
+    'https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson',
   ],
   subdivisions: [
-    'https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson', // Fallback to countries for now
+    'https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson', // Use same as countries for now
   ]
 };
 
@@ -90,7 +91,6 @@ export const useCountryData = (viewMode: ViewMode = 'countries'): UseCountryData
       if (retryCount < 2 &&
           (errorMessage.includes('timeout') || errorMessage.includes('fetch')) &&
           (typeof process === 'undefined' || process.env.NODE_ENV !== 'test')) {
-        console.log(`Retrying data load... attempt ${retryCount + 1}`);
         setTimeout(() => loadGeoJsonData(retryCount + 1), 1000 * (retryCount + 1));
         return;
       }

@@ -17,3 +17,30 @@ body {
   height: 100vh;
   width: 100vw;
 }
+
+/* Remove focus outline from Leaflet map */
+.leaflet-container {
+  outline: none !important;
+}
+
+.leaflet-container:focus {
+  outline: none !important;
+}
+
+/* Remove focus outline from SVG elements in the map */
+.leaflet-overlay-pane svg {
+  outline: none !important;
+}
+
+.leaflet-overlay-pane svg:focus {
+  outline: none !important;
+}
+
+/* Remove focus outline from path elements (countries) */
+.leaflet-overlay-pane path {
+  outline: none !important;
+}
+
+.leaflet-overlay-pane path:focus {
+  outline: none !important;
+}

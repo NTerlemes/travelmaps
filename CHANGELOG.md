@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Toast notification system for user feedback on save/load/delete actions
+- Loading spinner component for improved loading UX
+- Vercel deployment configuration
+
+### Changed
+- Removed debug console.log statements throughout codebase
+- Fixed test assertions to match primary data source URL
+- Cleaned up France duplicate handling logging
+
+### Added (previous)
 - Comprehensive test suite following TDD methodology
 - Unit tests for all React components using Vitest + React Testing Library
   - App component tests covering state management and user interactions
