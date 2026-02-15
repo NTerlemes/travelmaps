@@ -39,3 +39,14 @@ export interface MapColors {
   [TravelStatus.FROM]: string;
   [TravelStatus.CURRENT]: string;
 }
+
+export type ContinentName = 'Europe' | 'Asia' | 'Africa' | 'North America' | 'South America' | 'Oceania' | 'Antarctica';
+
+export type MapScope =
+  | { type: 'world' }
+  | { type: 'continent'; continent: ContinentName }
+  | { type: 'country'; countryCode: string; countryName: string };
+
+export type DetailLevel = 'countries' | 'subdivisions';
+
+export type AdminLevel = 'ADM1' | 'ADM2' | 'ADM3';

@@ -1,15 +1,17 @@
 import { Fragment } from 'react';
 import styled from 'styled-components';
-import { TravelData, TravelStatus } from '../types';
+import { TravelData, TravelStatus, MapScope, DetailLevel, AdminLevel } from '../types';
 import { DEFAULT_COLORS, COLOR_LABELS } from '../data/colors';
-import { ViewMode } from '../hooks/useCountryData';
 
 interface TravelControlsProps {
   selectedStatus: TravelStatus;
   onStatusChange: (status: TravelStatus) => void;
   travelData: TravelData[];
-  viewMode: ViewMode;
-  onViewModeChange: (mode: ViewMode) => void;
+  scope: MapScope;
+  detailLevel: DetailLevel;
+  onDetailLevelChange: (level: DetailLevel) => void;
+  adminLevel?: AdminLevel;
+  onAdminLevelChange?: (level: AdminLevel) => void;
   onClearAll: () => void;
 }
 
@@ -116,12 +118,25 @@ const Subtitle = styled.p`
   line-height: 1.4;
 `;
 
+function getSubtitleText(scope: MapScope, detailLevel: DetailLevel): string {
+  if (scope.type === 'country') {
+    return `Click on subdivisions to mark them with your selected travel status.`;
+  }
+  if (detailLevel === 'countries') {
+    return `Click on countries to mark them with your selected travel status.`;
+  }
+  return `Click on states/provinces to mark them with your selected travel status.`;
+}
+
 export const TravelControls: React.FC<TravelControlsProps> = ({
   selectedStatus,
   onStatusChange,
   travelData,
-  viewMode,
-  onViewModeChange,
+  scope,
+  detailLevel,
+  onDetailLevelChange,
+  adminLevel = 'ADM1',
+  onAdminLevelChange,
   onClearAll
 }) => {
   const getStatusCount = (status: TravelStatus) => {
@@ -135,33 +150,60 @@ export const TravelControls: React.FC<TravelControlsProps> = ({
     TravelStatus.CURRENT
   ];
 
+  const showDetailToggle = scope.type !== 'country';
+  const showAdminLevelToggle = scope.type === 'country';
+
+  const adminLevelOptions: { level: AdminLevel; label: string }[] = [
+    { level: 'ADM1', label: 'Regions' },
+    { level: 'ADM2', label: 'Counties' },
+    { level: 'ADM3', label: 'Sub-counties' },
+  ];
+
   return (
     <ControlsWrapper>
       <div>
         <Title>Travel Maps</Title>
         <Subtitle>
-          Click on {viewMode === 'countries' ? 'countries' : 'states/provinces'} to mark them with your selected travel status.
-          Build your personal travel map!
+          {getSubtitleText(scope, detailLevel)}
+          {' '}Build your personal travel map!
         </Subtitle>
       </div>
 
-      <Section>
-        <SectionTitle>Map Detail Level</SectionTitle>
-        <StatusButton
-          $isSelected={viewMode === 'countries'}
-          $color="#4CAF50"
-          onClick={() => onViewModeChange('countries')}
-        >
-          🌍 Countries
-        </StatusButton>
-        <StatusButton
-          $isSelected={viewMode === 'subdivisions'}
-          $color="#2196F3"
-          onClick={() => onViewModeChange('subdivisions')}
-        >
-          🗺️ States/Provinces
-        </StatusButton>
-      </Section>
+      {showDetailToggle && (
+        <Section>
+          <SectionTitle>Map Detail Level</SectionTitle>
+          <StatusButton
+            $isSelected={detailLevel === 'countries'}
+            $color="#4CAF50"
+            onClick={() => onDetailLevelChange('countries')}
+          >
+            Countries
+          </StatusButton>
+          <StatusButton
+            $isSelected={detailLevel === 'subdivisions'}
+            $color="#2196F3"
+            onClick={() => onDetailLevelChange('subdivisions')}
+          >
+            States/Provinces
+          </StatusButton>
+        </Section>
+      )}
+
+      {showAdminLevelToggle && onAdminLevelChange && (
+        <Section>
+          <SectionTitle>Administrative Level</SectionTitle>
+          {adminLevelOptions.map(({ level, label }) => (
+            <StatusButton
+              key={level}
+              $isSelected={adminLevel === level}
+              $color="#9C27B0"
+              onClick={() => onAdminLevelChange(level)}
+            >
+              {label}
+            </StatusButton>
+          ))}
+        </Section>
+      )}
 
       <Section>
         <SectionTitle>Select Travel Status</SectionTitle>

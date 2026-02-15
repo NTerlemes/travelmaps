@@ -8,14 +8,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Export map as image feature: PNG, JPEG, and SVG download from the sidebar
+- Map automatically centers to current scope before export capture
+- `ExportControls` component with format buttons in the sidebar
+- `exportMapAsImage` utility using `html-to-image` library
+- `mapRef` prop on `TravelMap` for DOM capture
+- `mapInstanceRef` prop on `TravelMap` to expose Leaflet map instance for centering
+- Tests for export utility (6 tests) and ExportControls component (9 tests)
+- App test verifying ExportControls renders on map page
+
+### Fixed
+- Load map not applying styles: GeoJSON layers now imperatively re-style when `travelData` changes (e.g. on load), using a ref + `useEffect` instead of relying on mouse events
+
+### Added (previous)
+- Admin level selector for country view: users can toggle between ADM1 (Regions), ADM2 (Counties), and ADM3 (Sub-counties)
+- `AdminLevel` type (`'ADM1' | 'ADM2' | 'ADM3'`) in types
+- Admin level toggle buttons in `TravelControls` sidebar (visible only for country scope)
+- `adminLevel` state in App with reset on scope change and toast on level change
+- Tests for admin level toggle visibility and click behavior
+
+### Changed
+- `useGeoData` hook now accepts explicit `adminLevel` parameter instead of auto-detecting from country config
+- `fetchCountrySubdivisions` accepts admin level parameter
+- Each admin level gets its own cache key for instant toggling
+- Switching admin level clears travel data (subdivision codes differ per level)
+
+### Removed
+- `preferredAdminLevel` field from `CountryInfo` interface
+- `getPreferredAdminLevel()` function (replaced by user-controlled toggle)
+- Hardcoded ADM2 override for UK
+
+### Fixed
+- geoBoundaries API calls now use ISO Alpha-3 codes (e.g. `FRA`) instead of Alpha-2 (`FR`), fixing 404 errors on all country subdivision fetches
+- CORS error on geoBoundaries GeoJSON download: rewrite `github.com/raw/` URLs to `raw.githubusercontent.com` to avoid 302 redirect with invalid CORS header
+
+### Added (previous)
+- ISO Alpha-2 to Alpha-3 mapping (`ISO2_TO_ISO3`) covering all countries
+- `iso3Code` field on `CountryInfo` interface
+- Helper function `getIso3()`
+- Tests verifying ISO3 conversion
+
+### Added (previous)
+- Landing page with scope selection (World / Continent / Country)
+- `LandingPage` component with tabbed interface, continent dropdown, searchable country dropdown
+- `useGeoData` hook supporting all scope/detail level combinations
+- `featureProperties` utility for normalizing GeoJSON property names across data sources
+- `geography.ts` static data module with continent/country bounds and ISO-to-continent mapping
+- `MapBoundsController` sub-component for auto-zoom on scope changes
+- `MapScope`, `DetailLevel`, `ContinentName` types
+- New test suites: LandingPage (12 tests), useGeoData (8 tests), featureProperties (13 tests)
+- geoBoundaries API integration for country-level subdivision data
+- Natural Earth admin-1 data source for world/continent subdivision view
+
+### Changed
+- Replaced OpenStreetMap tiles with CartoDB Positron no-labels for cleaner appearance
+- Fixed country click bug caused by GeoJSON key including `JSON.stringify(travelData)` (caused unmount/remount on every click)
+- Removed `e.originalEvent.preventDefault()` that was swallowing clicks
+- Deduplicated France features in GeoJSON pre-processing (eliminates `clickedFrance` hack)
+- Stabilized GeoJSON callbacks using refs instead of recreating on every render
+- Converted `TravelControls` from `viewMode`/`onViewModeChange` to `scope`/`detailLevel`/`onDetailLevelChange`
+- Detail level toggle is now hidden for country scope (always subdivisions)
+- Converted `useCountryData` to thin wrapper around `useGeoData`
+- App now has landing/map page routing with scope-based state management
+- Travel data is independent per scope (cleared on scope change)
+- Full rewrite of DESIGN.md
+- Updated all existing tests (App, TravelControls, useCountryData) for new API
+- Total test count: 81 tests across 8 files (up from 54)
+
+### Added (previous)
 - Toast notification system for user feedback on save/load/delete actions
 - Loading spinner component for improved loading UX
 - Vercel deployment configuration
-
-### Changed
-- Removed debug console.log statements throughout codebase
-- Fixed test assertions to match primary data source URL
-- Cleaned up France duplicate handling logging
 
 ### Added (previous)
 - Comprehensive test suite following TDD methodology

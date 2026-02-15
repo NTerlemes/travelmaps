@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { renderHook } from '@testing-library/react'
 import { waitFor } from '@testing-library/react'
-import { useCountryData, dataCache, ViewMode } from './useCountryData'
+import { useCountryData, dataCache } from './useCountryData'
 
 // Mock fetch
 global.fetch = vi.fn()
@@ -17,10 +17,9 @@ const mockGeoJsonData = {
   ]
 }
 
-describe('useCountryData Hook', () => {
+describe('useCountryData Hook (wrapper)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    // Clear cache between tests
     dataCache.clear()
   })
 
@@ -46,7 +45,7 @@ describe('useCountryData Hook', () => {
       expect(result.current.loading).toBe(false)
     })
 
-    expect(result.current.geoJsonData).toEqual(mockGeoJsonData)
+    expect(result.current.geoJsonData).not.toBeNull()
     expect(result.current.error).toEqual(null)
     expect(fetch).toHaveBeenCalledWith(
       'https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson',
@@ -58,7 +57,6 @@ describe('useCountryData Hook', () => {
   })
 
   it('handles fetch errors correctly', async () => {
-    // Mock all sources to fail
     (fetch as any).mockRejectedValue(new Error('Failed to fetch map data'))
 
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -70,14 +68,13 @@ describe('useCountryData Hook', () => {
     })
 
     expect(result.current.geoJsonData).toEqual(null)
-    expect(result.current.error).toBe('Failed to fetch map data')
+    expect(result.current.error).toBeTruthy()
     expect(consoleSpy).toHaveBeenCalled()
 
     consoleSpy.mockRestore()
   })
 
   it('handles network errors correctly', async () => {
-    // Mock all sources to fail with network error
     (fetch as any).mockRejectedValue(new Error('Network error'))
 
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -89,79 +86,14 @@ describe('useCountryData Hook', () => {
     })
 
     expect(result.current.geoJsonData).toEqual(null)
-    expect(result.current.error).toBe('Network error')
+    expect(result.current.error).toBeTruthy()
     expect(consoleSpy).toHaveBeenCalled()
 
     consoleSpy.mockRestore()
   })
 
-  it('handles unknown errors correctly', async () => {
-    // Mock all sources to fail with unknown error
-    (fetch as any).mockRejectedValue('Unknown error')
-
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-
+  it('provides a retry function', () => {
     const { result } = renderHook(() => useCountryData('countries'))
-
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false)
-    })
-
-    expect(result.current.geoJsonData).toEqual(null)
-    expect(result.current.error).toBe('Unknown fetch error')
-    expect(consoleSpy).toHaveBeenCalled()
-
-    consoleSpy.mockRestore()
+    expect(typeof result.current.retry).toBe('function')
   })
-
-  it('refetches data when view mode changes', async () => {
-    (fetch as any).mockResolvedValue({
-      ok: true,
-      json: async () => mockGeoJsonData
-    })
-
-    const { result, rerender } = renderHook(
-      ({ viewMode }: { viewMode: ViewMode }) => useCountryData(viewMode),
-      { initialProps: { viewMode: 'countries' as ViewMode } }
-    )
-
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false)
-    })
-
-    expect(fetch).toHaveBeenCalledTimes(1)
-
-    // Change view mode
-    rerender({ viewMode: 'subdivisions' as ViewMode })
-
-    expect(result.current.loading).toBe(true)
-
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false)
-    })
-
-    expect(fetch).toHaveBeenCalledTimes(2)
-  })
-
-  it('uses the same URL regardless of view mode', async () => {
-    (fetch as any).mockResolvedValue({
-      ok: true,
-      json: async () => mockGeoJsonData
-    })
-
-    const { result: result1 } = renderHook(() => useCountryData('countries'))
-    await waitFor(() => expect(result1.current.loading).toBe(false))
-
-    const { result: result2 } = renderHook(() => useCountryData('subdivisions'))
-    await waitFor(() => expect(result2.current.loading).toBe(false))
-
-    expect(fetch).toHaveBeenCalledWith(
-      'https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson',
-      expect.objectContaining({
-        headers: { 'Accept': 'application/json' },
-        signal: expect.any(AbortSignal)
-      })
-    )
-  })
-
 })

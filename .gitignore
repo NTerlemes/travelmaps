@@ -46,3 +46,9 @@ coverage/
 # Temporary folders
 tmp/
 temp/
+
+# MCP config (local tool settings)
+.mcp.json
+
+# Screenshots / design artifacts
+current-ui.png

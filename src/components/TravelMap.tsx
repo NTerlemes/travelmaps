@@ -1,26 +1,83 @@
 import { useCallback, useMemo, useRef, useEffect } from 'react';
-import { MapContainer, TileLayer, GeoJSON } from 'react-leaflet';
-import { LatLngExpression } from 'leaflet';
-import { TravelData, TravelStatus } from '../types';
+import { MapContainer, TileLayer, GeoJSON, useMap } from 'react-leaflet';
+import L, { LatLngExpression, LatLngBoundsExpression } from 'leaflet';
+import { TravelData, TravelStatus, MapScope, DetailLevel, AdminLevel } from '../types';
 import { DEFAULT_COLORS } from '../data/colors';
-import { useCountryData, ViewMode } from '../hooks/useCountryData';
+import { useGeoData } from '../hooks/useGeoData';
+import { extractFeatureIdentifiers, getFeatureKey } from '../utils/featureProperties';
+import { getContinentBounds, getCountryBounds } from '../data/geography';
 
 interface TravelMapProps {
   travelData: TravelData[];
   selectedStatus: TravelStatus;
-  viewMode: ViewMode;
+  scope: MapScope;
+  detailLevel: DetailLevel;
+  adminLevel?: AdminLevel;
+  mapRef?: React.RefObject<HTMLDivElement>;
+  mapInstanceRef?: React.MutableRefObject<L.Map | null>;
   onLocationClick: (countryCode: string, subdivisionCode: string | undefined, status: TravelStatus) => void;
 }
+
+/**
+ * Sub-component that exposes the Leaflet map instance via a ref.
+ */
+const MapInstanceExposer: React.FC<{ mapInstanceRef: React.MutableRefObject<L.Map | null> }> = ({ mapInstanceRef }) => {
+  const map = useMap();
+  useEffect(() => {
+    mapInstanceRef.current = map;
+    return () => { mapInstanceRef.current = null; };
+  }, [map, mapInstanceRef]);
+  return null;
+};
+
+/**
+ * Sub-component that fits map bounds when scope changes.
+ */
+const MapBoundsController: React.FC<{ scope: MapScope }> = ({ scope }) => {
+  const map = useMap();
+
+  useEffect(() => {
+    let bounds: [[number, number], [number, number]] | null = null;
+
+    if (scope.type === 'continent') {
+      bounds = getContinentBounds(scope.continent);
+    } else if (scope.type === 'country') {
+      bounds = getCountryBounds(scope.countryCode);
+    }
+
+    if (bounds) {
+      map.fitBounds(bounds as LatLngBoundsExpression, { padding: [20, 20] });
+    } else {
+      // World view
+      map.setView([20, 0], 2);
+    }
+  }, [map, scope]);
+
+  return null;
+};
 
 export const TravelMap: React.FC<TravelMapProps> = ({
   travelData,
   selectedStatus,
-  viewMode,
+  scope,
+  detailLevel,
+  adminLevel,
+  mapRef,
+  mapInstanceRef,
   onLocationClick
 }) => {
-  const { geoJsonData, loading, error, retry } = useCountryData(viewMode);
+  const { geoJsonData, loading, error, retry } = useGeoData({ scope, detailLevel, adminLevel });
   const lastClickTime = useRef<number>(0);
-  const clickedFrance = useRef<boolean>(false);
+  const geoJsonRef = useRef<any>(null);
+
+  const isSubdivisionData = detailLevel === 'subdivisions';
+
+  // Store mutable values in refs so GeoJSON callbacks stay stable
+  const selectedStatusRef = useRef(selectedStatus);
+  selectedStatusRef.current = selectedStatus;
+  const onLocationClickRef = useRef(onLocationClick);
+  onLocationClickRef.current = onLocationClick;
+  const travelDataMapRef = useRef(new Map<string, TravelStatus>());
 
   const center: LatLngExpression = [20, 0];
   const zoom = 2;
@@ -33,26 +90,36 @@ export const TravelMap: React.FC<TravelMapProps> = ({
         : data.countryCode;
       map.set(key, data.status);
     });
+    travelDataMapRef.current = map;
     return map;
   }, [travelData]);
 
-  // Reset France flag when data changes or when GeoJSON is processed
-  useEffect(() => {
-    clickedFrance.current = false;
-  }, [travelData, selectedStatus, viewMode, geoJsonData]);
+  // Pre-process GeoJSON to deduplicate features (for country-level data)
+  const processedGeoJson = useMemo(() => {
+    if (!geoJsonData) return null;
+
+    if (isSubdivisionData) {
+      // Subdivision data typically doesn't need deduplication
+      return geoJsonData;
+    }
+
+    // Country-level: deduplicate (e.g., France)
+    const seenCodes = new Set<string>();
+    const deduped = geoJsonData.features.filter((feature: any) => {
+      const ids = extractFeatureIdentifiers(feature, false);
+      if (!ids) return true; // Keep features we can't parse
+      if (seenCodes.has(ids.code)) return false;
+      seenCodes.add(ids.code);
+      return true;
+    });
+
+    return { ...geoJsonData, features: deduped };
+  }, [geoJsonData, isSubdivisionData]);
 
   const getFeatureStyle = useCallback((feature: any) => {
-    let key: string;
-    if (viewMode === 'countries') {
-      const countryCode = feature.properties['ISO3166-1-Alpha-2'] || feature.properties.ISO_A2 || feature.properties.iso_a2;
-      key = countryCode;
-    } else {
-      // Subdivision mode: treat each country as a subdivision for demonstration
-      const countryCode = feature.properties['ISO3166-1-Alpha-2'] || feature.properties.ISO_A2 || feature.properties.iso_a2;
-      const subdivisionCode = `${countryCode}-01`; // Mock subdivision code
-      key = subdivisionCode;
-    }
-    const status = travelDataMap.get(key) || TravelStatus.NONE;
+    const ids = extractFeatureIdentifiers(feature, isSubdivisionData);
+    const key = ids ? getFeatureKey(ids) : '';
+    const status = travelDataMapRef.current.get(key) || TravelStatus.NONE;
 
     return {
       fillColor: DEFAULT_COLORS[status],
@@ -61,139 +128,51 @@ export const TravelMap: React.FC<TravelMapProps> = ({
       color: status === TravelStatus.NONE ? '#999' : '#555',
       fillOpacity: status === TravelStatus.NONE ? 0.15 : 0.7
     };
-  }, [travelDataMap, viewMode]);
+  }, [isSubdivisionData]);
 
-  const onFeatureClick = useCallback((feature: any) => {
-    if (viewMode === 'countries') {
-      let countryCode = feature.properties['ISO3166-1-Alpha-2'] || feature.properties.ISO_A2 || feature.properties.iso_a2;
-
-      // Special handling for France
-      const displayName = feature.properties.NAME || feature.properties.name;
-      const isFrance = displayName === 'France' || displayName === 'French Republic' ||
-                       countryCode === 'FR' || countryCode === 'FRA' || feature.properties.NAME_EN === 'France';
-
-      if (isFrance) {
-        countryCode = 'FR'; // Force France to use FR
+  // Re-apply styles to all layers when travelData changes (e.g. on load)
+  useEffect(() => {
+    if (!geoJsonRef.current) return;
+    geoJsonRef.current.eachLayer((layer: any) => {
+      if (layer.feature) {
+        layer.setStyle(getFeatureStyle(layer.feature));
       }
-
-      if (countryCode && countryCode !== '-99') {
-        onLocationClick(countryCode, undefined, selectedStatus);
-      }
-    } else {
-      // Subdivision mode: treat each country as a subdivision for demonstration
-      let countryCode = feature.properties['ISO3166-1-Alpha-2'] || feature.properties.ISO_A2 || feature.properties.iso_a2;
-
-      // Special handling for France in subdivision mode
-      const countryName = feature.properties.NAME || feature.properties.name;
-      const isFrance = countryName === 'France' || countryName === 'French Republic' ||
-                       countryCode === 'FR' || countryCode === 'FRA' || feature.properties.NAME_EN === 'France';
-
-      if (isFrance) {
-        countryCode = 'FR'; // Force France to use FR
-      }
-
-      const subdivisionCode = `${countryCode}-01`; // Mock subdivision code
-      if (countryCode && countryCode !== '-99' && subdivisionCode) {
-        onLocationClick(countryCode, subdivisionCode, selectedStatus);
-      }
-    }
-  }, [onLocationClick, selectedStatus, viewMode]);
+    });
+  }, [travelDataMap, getFeatureStyle]);
 
   const onEachFeature = useCallback((feature: any, layer: any) => {
-    let displayName: string;
-    let key: string;
+    const ids = extractFeatureIdentifiers(feature, isSubdivisionData);
+    if (!ids) return;
 
-    if (viewMode === 'countries') {
-      displayName = feature.properties.NAME || feature.properties.name;
-      const countryCode = feature.properties['ISO3166-1-Alpha-2'] ||
-                         feature.properties.ISO_A2 ||
-                         feature.properties.iso_a2 ||
-                         feature.properties.ISO ||
-                         feature.properties.id ||
-                         feature.properties.ID;
-      key = countryCode;
-
-      // Fix for France duplicates: handle both "France" and "French Republic"
-      const isFrance = displayName === 'France' || displayName === 'French Republic' ||
-                       key === 'FR' || key === 'FRA' || feature.properties.NAME_EN === 'France';
-
-      // Create a fallback key for countries without ISO codes
-      if (!key && displayName) {
-        // Use a normalized version of the country name as a fallback key
-        key = displayName.toUpperCase().replace(/\s+/g, '_').replace(/[^A-Z_]/g, '');
-      }
-
-
-      if (isFrance) {
-        if (clickedFrance.current) {
-          return; // Skip this France duplicate
-        }
-        clickedFrance.current = true;
-        key = 'FR'; // Force France to use FR as key
-        displayName = 'France'; // Normalize the display name
-      }
-
-      // Skip features without proper names or keys
-      if (!displayName || !key) {
-        return;
-      }
-    } else {
-      // Subdivision mode: treat each country as a subdivision for demonstration
-      const countryName = feature.properties.NAME || feature.properties.name;
-      let countryCode = feature.properties['ISO3166-1-Alpha-2'] || feature.properties.ISO_A2 || feature.properties.iso_a2;
-
-      // Fix for France duplicates in subdivision mode
-      const isFrance = countryName === 'France' || countryName === 'French Republic' ||
-                       countryCode === 'FR' || countryCode === 'FRA' || feature.properties.NAME_EN === 'France';
-
-      if (isFrance && clickedFrance.current) {
-        return; // Skip this France duplicate
-      }
-      if (isFrance) {
-        clickedFrance.current = true;
-        countryCode = 'FR'; // Force France to use FR as key
-      }
-
-      displayName = `${isFrance ? 'France' : countryName} (Region 1)`; // Add "Region 1" to show it's subdivision mode
-      const subdivisionCode = `${countryCode}-01`; // Mock subdivision code
-      key = subdivisionCode;
-
-      // Skip features without proper country codes, but allow France even with -99
-      if (!countryName || (!countryCode || countryCode === '-99') && !isFrance) {
-        return;
-      }
-    }
-
-    const currentStatus = travelDataMap.get(key) || TravelStatus.NONE;
+    const key = getFeatureKey(ids);
 
     layer.bindTooltip(`
       <div style="font-size: 12px;">
-        <strong>${displayName}</strong><br/>
-        Status: ${currentStatus === TravelStatus.NONE ? 'Not marked' : currentStatus}<br/>
-        <em>Click to mark as: ${selectedStatus}</em>
+        <strong>${ids.name}</strong><br/>
+        <em>Click to mark</em>
       </div>
     `, {
       sticky: true,
       direction: 'top'
     });
 
-
     layer.on('click', (e: any) => {
       const now = Date.now();
-      // Debounce clicks within 100ms to prevent multiple rapid clicks
-      if (now - lastClickTime.current < 100) {
-        return;
-      }
+      if (now - lastClickTime.current < 100) return;
       lastClickTime.current = now;
 
-      // Stop event propagation to prevent multiple features from being clicked
       e.originalEvent.stopPropagation();
-      e.originalEvent.preventDefault();
-      onFeatureClick(feature);
+
+      if (ids.isSubdivision) {
+        onLocationClickRef.current(ids.countryCode, ids.code, selectedStatusRef.current);
+      } else {
+        onLocationClickRef.current(ids.code, undefined, selectedStatusRef.current);
+      }
     });
 
     layer.on('mouseover', () => {
-      const hoverOpacity = currentStatus === TravelStatus.NONE ? 0.4 : 0.85;
+      const status = travelDataMapRef.current.get(key) || TravelStatus.NONE;
+      const hoverOpacity = status === TravelStatus.NONE ? 0.4 : 0.85;
       layer.setStyle({
         weight: 2,
         opacity: 1,
@@ -204,7 +183,7 @@ export const TravelMap: React.FC<TravelMapProps> = ({
     layer.on('mouseout', () => {
       layer.setStyle(getFeatureStyle(feature));
     });
-  }, [onFeatureClick, selectedStatus, travelDataMap, getFeatureStyle, viewMode]);
+  }, [getFeatureStyle, isSubdivisionData]);
 
   if (loading) {
     return (
@@ -257,25 +236,31 @@ export const TravelMap: React.FC<TravelMapProps> = ({
   }
 
   return (
-    <MapContainer
-      center={center}
-      zoom={zoom}
-      style={{ height: '100%', width: '100%' }}
-      zoomControl={true}
-    >
-      <TileLayer
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-      />
-
-      {geoJsonData && (
-        <GeoJSON
-          key={`${JSON.stringify(travelData)}-${selectedStatus}-${viewMode}`}
-          data={geoJsonData}
-          style={getFeatureStyle}
-          onEachFeature={onEachFeature}
+    <div ref={mapRef} style={{ height: '100%', width: '100%' }}>
+      <MapContainer
+        center={center}
+        zoom={zoom}
+        style={{ height: '100%', width: '100%' }}
+        zoomControl={true}
+      >
+        <TileLayer
+          url="https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png"
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
         />
-      )}
-    </MapContainer>
+
+        {mapInstanceRef && <MapInstanceExposer mapInstanceRef={mapInstanceRef} />}
+        <MapBoundsController scope={scope} />
+
+        {processedGeoJson && (
+          <GeoJSON
+            ref={geoJsonRef}
+            key={`${scope.type}-${detailLevel}-${adminLevel || 'ADM1'}-${processedGeoJson ? 'loaded' : 'empty'}`}
+            data={processedGeoJson}
+            style={getFeatureStyle}
+            onEachFeature={onEachFeature}
+          />
+        )}
+      </MapContainer>
+    </div>
   );
 };
