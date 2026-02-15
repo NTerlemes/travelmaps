@@ -6,6 +6,7 @@ import { DEFAULT_COLORS } from '../data/colors';
 import { useGeoData } from '../hooks/useGeoData';
 import { extractFeatureIdentifiers, getFeatureKey } from '../utils/featureProperties';
 import { getContinentBounds, getCountryBounds } from '../data/geography';
+import { DebugPanel } from './DebugPanel';
 
 interface TravelMapProps {
   travelData: TravelData[];
@@ -66,7 +67,7 @@ export const TravelMap: React.FC<TravelMapProps> = ({
   mapInstanceRef,
   onLocationClick
 }) => {
-  const { geoJsonData, loading, error, retry } = useGeoData({ scope, detailLevel, adminLevel });
+  const { geoJsonData, loading, error, retry, dataVersion } = useGeoData({ scope, detailLevel, adminLevel });
   const lastClickTime = useRef<number>(0);
   const geoJsonRef = useRef<any>(null);
 
@@ -236,7 +237,8 @@ export const TravelMap: React.FC<TravelMapProps> = ({
   }
 
   return (
-    <div ref={mapRef} style={{ height: '100%', width: '100%' }}>
+    <div ref={mapRef} style={{ height: '100%', width: '100%', position: 'relative' }}>
+      {import.meta.env.DEV && <DebugPanel geoJsonData={processedGeoJson} />}
       <MapContainer
         center={center}
         zoom={zoom}
@@ -254,7 +256,7 @@ export const TravelMap: React.FC<TravelMapProps> = ({
         {processedGeoJson && (
           <GeoJSON
             ref={geoJsonRef}
-            key={`${scope.type}-${detailLevel}-${adminLevel || 'ADM1'}-${processedGeoJson ? 'loaded' : 'empty'}`}
+            key={`${scope.type}-${detailLevel}-${adminLevel || 'ADM1'}-v${dataVersion}`}
             data={processedGeoJson}
             style={getFeatureStyle}
             onEachFeature={onEachFeature}

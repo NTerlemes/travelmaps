@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
+import { union } from '@turf/union';
+import { polygon as turfPolygon, multiPolygon as turfMultiPolygon, featureCollection } from '@turf/helpers';
 import { MapScope, DetailLevel, AdminLevel, ContinentName } from '../types';
-import { ISO_TO_CONTINENT, getIso3 } from '../data/geography';
+import { ISO_TO_CONTINENT, getIso3, ISO2_TO_ISO3 } from '../data/geography';
 
 interface UseGeoDataParams {
   scope: MapScope;
@@ -13,6 +15,7 @@ interface UseGeoDataReturn {
   loading: boolean;
   error: string | null;
   retry: () => void;
+  dataVersion: number;
 }
 
 const WORLD_COUNTRIES_URLS = [
@@ -25,6 +28,11 @@ const NATURAL_EARTH_ADMIN1_URL =
   'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_1_states_provinces.geojson';
 
 const GEOBOUNDARIES_API = 'https://www.geoboundaries.org/api/current/gbOpen';
+
+// Reverse mapping: ISO Alpha-3 → ISO Alpha-2
+const ISO3_TO_ISO2: Record<string, string> = Object.fromEntries(
+  Object.entries(ISO2_TO_ISO3).map(([iso2, iso3]) => [iso3, iso2])
+);
 
 // Simple cache
 export const geoDataCache = new Map<string, any>();
@@ -47,13 +55,42 @@ async function fetchWithTimeout(url: string, timeoutMs = 30000): Promise<Respons
   });
 }
 
+/**
+ * Enrich GeoJSON features that lack ISO Alpha-2 codes in properties.
+ * The holtzy world.geojson stores the ISO3 code as the feature-level `id`
+ * and only has `{ name }` in properties. This adds ISO_A2 so downstream
+ * code (filtering, click handlers) can identify countries.
+ */
+function enrichFeatureProperties(geojson: any): any {
+  const features = geojson.features.map((f: any) => {
+    const props = f.properties || {};
+    const hasIso2 = props['ISO3166-1-Alpha-2'] || props.ISO_A2 || props.iso_a2;
+    if (hasIso2) return f; // Already has Alpha-2
+
+    // Try to derive ISO_A2 from feature.id (ISO3 code like "FRA")
+    const iso3 = f.id;
+    const iso2 = iso3 ? ISO3_TO_ISO2[iso3] : undefined;
+    if (!iso2) return f;
+
+    return {
+      ...f,
+      properties: {
+        ...props,
+        ISO_A2: iso2,
+        NAME: props.NAME || props.name || iso2,
+      },
+    };
+  });
+  return { ...geojson, features };
+}
+
 async function fetchWorldCountries(): Promise<any> {
   for (const url of WORLD_COUNTRIES_URLS) {
     try {
       const res = await fetchWithTimeout(url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      if (data?.type && data?.features) return data;
+      if (data?.type && data?.features) return enrichFeatureProperties(data);
       throw new Error('Invalid GeoJSON');
     } catch {
       continue;
@@ -101,20 +138,178 @@ function deduplicateFeatures(geojson: any): any {
   return { ...geojson, features: deduped };
 }
 
+// Filter out tiny subdivisions for continental/world views.
+// scalerank: lower = larger/more important, higher = smaller/less important.
+// Strategy per country:
+//   1. Keep features with scalerank <= threshold
+//   2. If ALL features exceed the threshold (e.g. SI, MT, MK), merge by region
+//   3. If kept count > MAX_FEATURES_PER_COUNTRY, merge by region (e.g. LV)
+//   4. If country is in PARTIAL_MERGE_REGIONS, merge only those region groups
+const MAX_SCALERANK = 9;
+const MAX_FEATURES_PER_COUNTRY = 80;
+
+// Countries where specific regions should be merged even though scalerank is OK
+const PARTIAL_MERGE_REGIONS: Record<string, string[]> = {
+  'GB': ['Greater London'],
+};
+
+/**
+ * Collect all polygon coordinates from an array of features into a flat list.
+ * Used as fallback when turf union fails.
+ */
+function collectPolygons(features: any[]): any[] {
+  const polygons: any[] = [];
+  for (const f of features) {
+    if (f.geometry?.type === 'Polygon') {
+      polygons.push(f.geometry.coordinates);
+    } else if (f.geometry?.type === 'MultiPolygon') {
+      polygons.push(...f.geometry.coordinates);
+    }
+  }
+  return polygons;
+}
+
+/**
+ * Dissolve an array of GeoJSON features into a single geometry using polygon union.
+ * This removes internal shared boundaries, producing clean outlines.
+ * Falls back to a raw MultiPolygon if union fails (e.g. invalid geometry).
+ */
+function dissolveFeatures(features: any[]): { type: string; coordinates: any[] } {
+  try {
+    const turfFeatures = features
+      .filter((f: any) => f.geometry?.coordinates?.length > 0)
+      .map((f: any) => {
+        if (f.geometry.type === 'MultiPolygon') {
+          return turfMultiPolygon(f.geometry.coordinates);
+        }
+        return turfPolygon(f.geometry.coordinates);
+      });
+    if (turfFeatures.length === 0) {
+      return { type: 'MultiPolygon', coordinates: collectPolygons(features) };
+    }
+    const dissolved = union(featureCollection(turfFeatures));
+    if (dissolved?.geometry) {
+      return dissolved.geometry;
+    }
+  } catch {
+    // Fall back to raw MultiPolygon on any error
+  }
+  return { type: 'MultiPolygon', coordinates: collectPolygons(features) };
+}
+
+function mergeCountryFeatures(features: any[]): any {
+  const baseProps = { ...features[0].properties };
+  baseProps.name = baseProps.admin || baseProps.name;
+  baseProps._merged = true;
+  return {
+    type: 'Feature',
+    properties: baseProps,
+    geometry: dissolveFeatures(features),
+  };
+}
+
+/**
+ * Merge features by their `region` property into one MultiPolygon per region.
+ * Falls back to single-blob merge if features have no region or only one region.
+ */
+export function mergeFeaturesByRegion(features: any[]): any[] {
+  const byRegion = new Map<string, any[]>();
+  for (const f of features) {
+    const region = f.properties.region || '';
+    if (!byRegion.has(region)) byRegion.set(region, []);
+    byRegion.get(region)!.push(f);
+  }
+
+  // If only 1 region group (or all have no region), fall back to single-blob
+  if (byRegion.size <= 1) {
+    return [mergeCountryFeatures(features)];
+  }
+
+  const merged: any[] = [];
+  for (const [regionName, regionFeatures] of byRegion) {
+    const baseProps = { ...regionFeatures[0].properties };
+    baseProps.name = regionName;
+    baseProps._merged = true;
+    merged.push({
+      type: 'Feature',
+      properties: baseProps,
+      geometry: dissolveFeatures(regionFeatures),
+    });
+  }
+  return merged;
+}
+
+export function filterByScalerank(geojson: any, maxScalerank: number = MAX_SCALERANK): any {
+  const byCountry = new Map<string, any[]>();
+  for (const f of geojson.features) {
+    const cc = f.properties.iso_a2 || f.properties.ISO_A2 || '';
+    if (!byCountry.has(cc)) byCountry.set(cc, []);
+    byCountry.get(cc)!.push(f);
+  }
+
+  const filtered: any[] = [];
+  for (const [cc, features] of byCountry) {
+    const kept = features.filter((f: any) => (f.properties.scalerank ?? 0) <= maxScalerank);
+
+    if (kept.length === 0) {
+      // All features exceed threshold — merge by region
+      filtered.push(...mergeFeaturesByRegion(features));
+    } else if (kept.length > MAX_FEATURES_PER_COUNTRY) {
+      // Too many features — merge by region
+      filtered.push(...mergeFeaturesByRegion(kept));
+    } else if (PARTIAL_MERGE_REGIONS[cc]) {
+      // Partial merge: merge only specified region groups, keep rest as-is
+      const regionsToMerge = PARTIAL_MERGE_REGIONS[cc];
+      const toMerge = new Map<string, any[]>();
+      const toKeep: any[] = [];
+
+      for (const f of kept) {
+        const region = f.properties.region || '';
+        if (regionsToMerge.includes(region)) {
+          if (!toMerge.has(region)) toMerge.set(region, []);
+          toMerge.get(region)!.push(f);
+        } else {
+          toKeep.push(f);
+        }
+      }
+
+      filtered.push(...toKeep);
+      for (const [regionName, regionFeatures] of toMerge) {
+        const baseProps = { ...regionFeatures[0].properties };
+        baseProps.name = regionName;
+        baseProps._merged = true;
+        filtered.push({
+          type: 'Feature',
+          properties: baseProps,
+          geometry: dissolveFeatures(regionFeatures),
+        });
+      }
+    } else {
+      // Normal case — keep as-is
+      filtered.push(...kept);
+    }
+  }
+
+  return { ...geojson, features: filtered };
+}
+
 async function fetchSubdivisionsNaturalEarth(continent?: ContinentName): Promise<any> {
   const res = await fetchWithTimeout(NATURAL_EARTH_ADMIN1_URL, 60000);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
   if (!data?.features) throw new Error('Invalid Natural Earth data');
 
+  let result = data;
+
   if (continent) {
     const filtered = data.features.filter((f: any) => {
       const code = f.properties.iso_a2 || f.properties.ISO_A2;
       return code && ISO_TO_CONTINENT[code] === continent;
     });
-    return { ...data, features: filtered };
+    result = { ...data, features: filtered };
   }
-  return data;
+
+  return filterByScalerank(result);
 }
 
 async function fetchCountrySubdivisions(countryCode: string, adminLevel: AdminLevel = 'ADM1'): Promise<any> {
@@ -174,38 +369,73 @@ export const useGeoData = ({ scope, detailLevel, adminLevel = 'ADM1' }: UseGeoDa
   const [geoJsonData, setGeoJsonData] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+  const [dataVersion, setDataVersion] = useState(0);
+  // Track which cache key the current geoJsonData belongs to
+  const [loadedKey, setLoadedKey] = useState<string>('');
 
-  const load = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
+  const currentKey = getCacheKey(scope, detailLevel, adminLevel);
 
-      const cacheKey = getCacheKey(scope, detailLevel, adminLevel);
-      if (geoDataCache.has(cacheKey)) {
-        setGeoJsonData(geoDataCache.get(cacheKey));
-        setLoading(false);
-        return;
+  useEffect(() => {
+    let cancelled = false;
+    const effectAdminLevel = adminLevel;
+
+    setGeoJsonData(null);
+    setLoadedKey('');
+
+    const load = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const cacheKey = getCacheKey(scope, detailLevel, effectAdminLevel);
+        if (geoDataCache.has(cacheKey)) {
+          if (!cancelled) {
+            setGeoJsonData(geoDataCache.get(cacheKey));
+            setLoadedKey(cacheKey);
+            setDataVersion(v => v + 1);
+            setLoading(false);
+          }
+          return;
+        }
+
+        const data = await loadGeoData(scope, detailLevel, effectAdminLevel);
+        geoDataCache.set(cacheKey, data);
+        if (!cancelled) {
+          setGeoJsonData(data);
+          setLoadedKey(cacheKey);
+          setDataVersion(v => v + 1);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          const msg = err instanceof Error ? err.message : 'Failed to load map data';
+          setError(msg);
+          console.error('Error loading geo data:', err);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
+    };
 
-      const data = await loadGeoData(scope, detailLevel, adminLevel);
-      geoDataCache.set(cacheKey, data);
-      setGeoJsonData(data);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to load map data';
-      setError(msg);
-      console.error('Error loading geo data:', err);
-    } finally {
-      setLoading(false);
-    }
+    load();
+    return () => {
+      cancelled = true;
+    };
   }, [scope.type,
       scope.type === 'continent' ? scope.continent : '',
       scope.type === 'country' ? scope.countryCode : '',
       detailLevel,
-      adminLevel]);
+      adminLevel,
+      retryCount]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  const retry = useCallback(() => {
+    setRetryCount(c => c + 1);
+  }, []);
 
-  return { geoJsonData, loading, error, retry: load };
+  // Never return stale data: if the current scope doesn't match what was loaded, return null
+  const effectiveData = loadedKey === currentKey ? geoJsonData : null;
+
+  return { geoJsonData: effectiveData, loading, error, retry, dataVersion };
 };

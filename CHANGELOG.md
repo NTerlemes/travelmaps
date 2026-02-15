@@ -7,7 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Merged regions now use `@turf/union` to dissolve individual subdivision polygons into clean outlines — no more internal ADM3 borders cluttering the map
+- Dissolved features styled with thicker dashed borders (`weight: 1`, `dashArray: '3 2'`) to distinguish merged from normal features
+- Region-based subdivision merging: countries with many tiny subdivisions (SI, MT, MK, AD, LI) are now merged by `region` property instead of into a single blob, preserving meaningful granularity (e.g. Slovenia → 12 statistical regions instead of 1 blob)
+- Feature-count threshold (80): countries like Latvia with 119 subdivisions under scalerank threshold are also region-merged
+- Partial merge for UK: Greater London boroughs merged into single "Greater London" feature while other UK subdivisions remain individual
+- Country-level views (geoBoundaries) are unaffected
+
 ### Added
+- Dev-only debug panel (bottom-left overlay) showing total feature count and per-country breakdown, collapsible, only visible in development mode
+- Tests for region merging (6 tests) and DebugPanel component (4 tests) — total: 131 tests
+
+### Fixed (previous)
+- Filter out tiny subdivisions at continental/world scope using Natural Earth `scalerank` property (threshold: 9)
+- Countries where all subdivisions are scalerank 10 were merged into a single clickable country-level MultiPolygon (now improved with region-based merging above)
+
+### Added
+- Restore map context on load: saving a map now persists scope, detail level, and admin level alongside travel data
+- Loading a saved map navigates back to the exact scope and admin level it was created with
+- Scope label displayed on saved map entries (e.g. "Greece ADM2", "World", "Europe")
+- Backward compatible: old saved maps without scope fields still load correctly
+- Tests for context persistence in useTravelMaps hook, scope label in SaveLoadControls
+
+### Added (previous)
 - Export map as image feature: PNG, JPEG, and SVG download from the sidebar
 - Map automatically centers to current scope before export capture
 - `ExportControls` component with format buttons in the sidebar
@@ -18,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - App test verifying ExportControls renders on map page
 
 ### Fixed
+- Race condition in useGeoData: rapid admin level/detail level switches caused stale responses to overwrite the correct data, making buttons appear to "rotate". Fixed with cancellation flag on unmount/re-render
 - Load map not applying styles: GeoJSON layers now imperatively re-style when `travelData` changes (e.g. on load), using a ref + `useEffect` instead of relying on mouse events
 
 ### Added (previous)

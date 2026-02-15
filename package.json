@@ -27,6 +27,8 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@turf/helpers": "^7.3.4",
+    "@turf/union": "^7.3.4",
     "html-to-image": "^1.11.13",
     "leaflet": "^1.9.4",
     "react": "^18.3.1",
