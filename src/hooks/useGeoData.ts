@@ -140,11 +140,32 @@ function deduplicateFeatures(geojson: any): any {
 
 // Filter out tiny subdivisions for continental/world views.
 // scalerank: lower = larger/more important, higher = smaller/less important.
-// Strategy per country:
-//   1. Keep features with scalerank <= threshold
-//   2. If ALL features exceed threshold, use all features for region grouping
-//   3. Always group by region: dissolve multi-feature regions, keep singles as-is
 const MAX_SCALERANK = 9;
+
+// Per-country merge strategy for continental/world subdivision views:
+//   'blob'   — merge all subdivisions into a single country-level feature
+//   'region' — group by Natural Earth `region` property, dissolve multi-feature groups
+//   'none'   — keep individual subdivisions as-is (just scalerank filter)
+type MergeStrategy = 'blob' | 'region' | 'none';
+
+const COUNTRY_MERGE_STRATEGY: Record<string, MergeStrategy> = {
+  // Small countries — single clickable feature, no subdivisions
+  'MT': 'blob', 'XK': 'blob', 'LU': 'blob', 'CY': 'blob',
+  'SI': 'blob', 'ME': 'blob', 'MD': 'blob',
+  'AD': 'blob', 'LI': 'blob', 'MC': 'blob', 'SM': 'blob', 'VA': 'blob',
+  'MK': 'blob',
+
+  // Region grouping — dissolve shared-region subdivisions
+  'IT': 'region', 'FR': 'region', 'ES': 'region', 'BE': 'region',
+  'PT': 'region', 'GB': 'region', 'IE': 'region', 'HU': 'region',
+  'LV': 'region',
+
+  // Everything else defaults to 'none' — individual subdivisions
+};
+
+function getMergeStrategy(countryCode: string): MergeStrategy {
+  return COUNTRY_MERGE_STRATEGY[countryCode] || 'none';
+}
 
 /**
  * Collect all polygon coordinates from an array of features into a flat list.
@@ -249,12 +270,29 @@ export function filterByScalerank(geojson: any, maxScalerank: number = MAX_SCALE
   }
 
   const filtered: any[] = [];
-  for (const [, features] of byCountry) {
+  for (const [cc, features] of byCountry) {
+    const strategy = getMergeStrategy(cc);
+
+    if (strategy === 'blob') {
+      // Merge everything into a single country feature
+      filtered.push(mergeCountryFeatures(features));
+      continue;
+    }
+
     const kept = features.filter((f: any) => (f.properties.scalerank ?? 0) <= maxScalerank);
-    // Use all features if none pass the scalerank filter, otherwise use the filtered set
-    const toGroup = kept.length > 0 ? kept : features;
-    // Always group by region: dissolves multi-feature regions, keeps singles as-is
-    filtered.push(...mergeFeaturesByRegion(toGroup));
+
+    if (strategy === 'region') {
+      const toGroup = kept.length > 0 ? kept : features;
+      filtered.push(...mergeFeaturesByRegion(toGroup));
+    } else {
+      // 'none' — keep individual subdivisions, just scalerank filter
+      if (kept.length > 0) {
+        filtered.push(...kept);
+      } else {
+        // All exceeded threshold — merge as single blob as fallback
+        filtered.push(mergeCountryFeatures(features));
+      }
+    }
   }
 
   return { ...geojson, features: filtered };

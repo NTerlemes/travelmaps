@@ -8,12 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
-- Merged regions now use `@turf/union` to dissolve individual subdivision polygons into clean outlines — no more internal ADM3 borders cluttering the map
-- Dissolved features styled with thicker dashed borders (`weight: 1`, `dashArray: '3 2'`) to distinguish merged from normal features
-- Region-based subdivision merging: countries with many tiny subdivisions (SI, MT, MK, AD, LI) are now merged by `region` property instead of into a single blob, preserving meaningful granularity (e.g. Slovenia → 12 statistical regions instead of 1 blob)
-- Feature-count threshold (80): countries like Latvia with 119 subdivisions under scalerank threshold are also region-merged
-- Region grouping now applies to ALL countries: subdivisions sharing a `region` are dissolved into one feature, single-feature regions kept as-is (e.g. France stays unchanged, UK London boroughs merge, Latvia 119→5 regions)
-- Removed `PARTIAL_MERGE_REGIONS` config and `MAX_FEATURES_PER_COUNTRY` threshold — universal region grouping handles all cases
+- Per-country merge strategy for continental/world subdivision views:
+  - **blob** (MT, XK, LU, CY, SI, ME, MD, MK, AD, LI, MC, SM, VA): single clickable feature, no subdivisions
+  - **region** (IT, FR, ES, BE, PT, GB, IE, HU, LV): group by Natural Earth `region`, dissolve shared-region subdivisions (e.g. UK London boroughs → 1 feature)
+  - **none** (DE, PL, DK, SE, NO, UA, CZ, SK, HR, RS, GR, RO, BG, AL, AT, LT, EE, BY, RU, and all unlisted): keep individual subdivisions as-is after scalerank filter
+- Merged regions use `@turf/union` to dissolve polygons into clean outlines — no internal ADM3 borders
 - Country-level views (geoBoundaries) are unaffected
 
 ### Added

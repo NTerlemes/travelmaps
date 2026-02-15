@@ -432,17 +432,16 @@ describe('useGeoData scalerank integration', () => {
     expect(result.current.geoJsonData.features[0].properties.name).toBe('California')
   })
 
-  it('merges by region when all features exceed scalerank threshold', async () => {
-    // SI has 4 features across 2 regions, all scalerank 10
+  it('applies per-country merge strategy for continent subdivision view', async () => {
+    // SI (blob) + FR (region, single-feature regions) + DE (none)
     const subdivisionData = {
       type: 'FeatureCollection',
       features: [
         { type: 'Feature', properties: { iso_a2: 'SI', name: 'Ljubljana', region: 'Osrednjeslovenska', admin: 'Slovenia', scalerank: 10 }, geometry: { type: 'Polygon', coordinates: [[[14,46],[15,46],[15,47],[14,46]]] } },
-        { type: 'Feature', properties: { iso_a2: 'SI', name: 'Kamnik', region: 'Osrednjeslovenska', admin: 'Slovenia', scalerank: 10 }, geometry: { type: 'Polygon', coordinates: [[[14.5,46],[15.5,46],[15.5,47],[14.5,46]]] } },
         { type: 'Feature', properties: { iso_a2: 'SI', name: 'Maribor', region: 'Podravska', admin: 'Slovenia', scalerank: 10 }, geometry: { type: 'Polygon', coordinates: [[[15,46],[16,46],[16,47],[15,46]]] } },
-        { type: 'Feature', properties: { iso_a2: 'SI', name: 'Ptuj', region: 'Podravska', admin: 'Slovenia', scalerank: 10 }, geometry: { type: 'Polygon', coordinates: [[[15.5,46],[16.5,46],[16.5,47],[15.5,46]]] } },
-        // Also include a normal FR feature to verify it's unchanged
         { type: 'Feature', properties: { iso_a2: 'FR', name: 'Île-de-France', region: 'Île-de-France', scalerank: 2 }, geometry: { type: 'Polygon', coordinates: [] } },
+        { type: 'Feature', properties: { iso_a2: 'DE', name: 'Bavaria', region: 'Bavaria', scalerank: 3 }, geometry: { type: 'Polygon', coordinates: [] } },
+        { type: 'Feature', properties: { iso_a2: 'DE', name: 'Saxony', region: 'Saxony', scalerank: 4 }, geometry: { type: 'Polygon', coordinates: [] } },
       ]
     };
 
@@ -459,12 +458,13 @@ describe('useGeoData scalerank integration', () => {
       expect(result.current.loading).toBe(false)
     })
 
-    // SI: 2 region-merged features, FR: 1 kept as-is = 3 total
-    expect(result.current.geoJsonData.features).toHaveLength(3)
+    // SI: 1 blob, FR: 1 as-is, DE: 2 as-is = 4 total
+    expect(result.current.geoJsonData.features).toHaveLength(4)
     const siFeatures = result.current.geoJsonData.features.filter((f: any) => f.properties.iso_a2 === 'SI')
-    expect(siFeatures).toHaveLength(2)
-    const regionNames = siFeatures.map((f: any) => f.properties.name).sort()
-    expect(regionNames).toEqual(['Osrednjeslovenska', 'Podravska'])
+    expect(siFeatures).toHaveLength(1)
+    expect(siFeatures[0].properties.name).toBe('Slovenia')
+    const deFeatures = result.current.geoJsonData.features.filter((f: any) => f.properties.iso_a2 === 'DE')
+    expect(deFeatures).toHaveLength(2)
   })
 
   it('does NOT apply scalerank filtering for country scope', async () => {
@@ -556,68 +556,54 @@ describe('mergeFeaturesByRegion', () => {
   })
 })
 
-describe('filterByScalerank region merging', () => {
-  it('merges by region when all features exceed scalerank threshold', () => {
+describe('filterByScalerank per-country merge strategy', () => {
+  it('blob strategy: merges all SI subdivisions into single feature', () => {
     const geojson = {
       type: 'FeatureCollection',
       features: [
         { type: 'Feature', properties: { iso_a2: 'SI', name: 'Ljubljana', region: 'Osrednjeslovenska', admin: 'Slovenia', scalerank: 10 }, geometry: { type: 'Polygon', coordinates: [[[14,46],[15,46],[15,47],[14,46]]] } },
-        { type: 'Feature', properties: { iso_a2: 'SI', name: 'Kamnik', region: 'Osrednjeslovenska', admin: 'Slovenia', scalerank: 10 }, geometry: { type: 'Polygon', coordinates: [[[14.5,46],[15.5,46],[15.5,47],[14.5,46]]] } },
         { type: 'Feature', properties: { iso_a2: 'SI', name: 'Maribor', region: 'Podravska', admin: 'Slovenia', scalerank: 10 }, geometry: { type: 'Polygon', coordinates: [[[15,46],[16,46],[16,47],[15,46]]] } },
-        { type: 'Feature', properties: { iso_a2: 'SI', name: 'Ptuj', region: 'Podravska', admin: 'Slovenia', scalerank: 10 }, geometry: { type: 'Polygon', coordinates: [[[15.5,46],[16.5,46],[16.5,47],[15.5,46]]] } },
       ]
     }
 
     const result = filterByScalerank(geojson, 9)
-    const siFeatures = result.features.filter((f: any) => f.properties.iso_a2 === 'SI')
-    expect(siFeatures).toHaveLength(2)
-    expect(siFeatures.map((f: any) => f.properties.name).sort()).toEqual(['Osrednjeslovenska', 'Podravska'])
+    // SI is 'blob' → single merged feature
+    expect(result.features).toHaveLength(1)
+    expect(result.features[0].properties.name).toBe('Slovenia')
+    expect(result.features[0].properties._merged).toBe(true)
   })
 
-  it('groups by region for all countries, even those under scalerank threshold', () => {
-    // 6 LV features across 3 regions, all under scalerank threshold
+  it('blob strategy: merges Malta into single feature', () => {
+    const geojson = {
+      type: 'FeatureCollection',
+      features: [
+        { type: 'Feature', properties: { iso_a2: 'MT', name: 'Valletta', admin: 'Malta', scalerank: 10 }, geometry: { type: 'Polygon', coordinates: [[[14,35],[15,35],[15,36],[14,35]]] } },
+        { type: 'Feature', properties: { iso_a2: 'MT', name: 'Sliema', admin: 'Malta', scalerank: 10 }, geometry: { type: 'Polygon', coordinates: [[[14.5,35],[15.5,35],[15.5,36],[14.5,35]]] } },
+      ]
+    }
+
+    const result = filterByScalerank(geojson, 9)
+    expect(result.features).toHaveLength(1)
+    expect(result.features[0].properties.name).toBe('Malta')
+  })
+
+  it('region strategy: groups LV by region', () => {
     const geojson = {
       type: 'FeatureCollection',
       features: [
         { type: 'Feature', properties: { iso_a2: 'LV', name: 'Riga city', region: 'Riga', scalerank: 6 }, geometry: { type: 'Polygon', coordinates: [[[24,56],[24.5,56],[24.5,57],[24,56]]] } },
         { type: 'Feature', properties: { iso_a2: 'LV', name: 'Jurmala', region: 'Riga', scalerank: 8 }, geometry: { type: 'Polygon', coordinates: [[[23.5,56],[24,56],[24,57],[23.5,56]]] } },
-        { type: 'Feature', properties: { iso_a2: 'LV', name: 'Sigulda', region: 'Vidzeme', scalerank: 8 }, geometry: { type: 'Polygon', coordinates: [[[24.5,57],[25,57],[25,57.5],[24.5,57]]] } },
-        { type: 'Feature', properties: { iso_a2: 'LV', name: 'Cesis', region: 'Vidzeme', scalerank: 8 }, geometry: { type: 'Polygon', coordinates: [[[25,57],[25.5,57],[25.5,57.5],[25,57]]] } },
         { type: 'Feature', properties: { iso_a2: 'LV', name: 'Liepaja', region: 'Kurzeme', scalerank: 7 }, geometry: { type: 'Polygon', coordinates: [[[21,56],[21.5,56],[21.5,57],[21,56]]] } },
         { type: 'Feature', properties: { iso_a2: 'LV', name: 'Ventspils', region: 'Kurzeme', scalerank: 8 }, geometry: { type: 'Polygon', coordinates: [[[21.5,57],[22,57],[22,57.5],[21.5,57]]] } },
       ]
     }
 
     const result = filterByScalerank(geojson, 9)
-    // Riga: 2 merged, Vidzeme: 2 merged, Kurzeme: 2 merged = 3 features
-    expect(result.features).toHaveLength(3)
-    const names = result.features.map((f: any) => f.properties.name).sort()
-    expect(names).toEqual(['Kurzeme', 'Riga', 'Vidzeme'])
+    expect(result.features).toHaveLength(2)
+    expect(result.features.map((f: any) => f.properties.name).sort()).toEqual(['Kurzeme', 'Riga'])
   })
 
-  it('keeps single-feature regions as-is without dissolving', () => {
-    // France: each subdivision has its own unique region
-    const geojson = {
-      type: 'FeatureCollection',
-      features: [
-        { type: 'Feature', properties: { iso_a2: 'FR', name: 'Île-de-France', region: 'Île-de-France', scalerank: 2 }, geometry: { type: 'Polygon', coordinates: [[[2,48],[3,48],[3,49],[2,48]]] } },
-        { type: 'Feature', properties: { iso_a2: 'FR', name: 'Normandie', region: 'Normandie', scalerank: 3 }, geometry: { type: 'Polygon', coordinates: [[[0,49],[1,49],[1,50],[0,49]]] } },
-        { type: 'Feature', properties: { iso_a2: 'FR', name: 'Brittany', region: 'Brittany', scalerank: 3 }, geometry: { type: 'Polygon', coordinates: [[[-3,48],[-2,48],[-2,49],[-3,48]]] } },
-      ]
-    }
-
-    const result = filterByScalerank(geojson, 9)
-    // Each region has 1 feature → kept as-is, no merging
-    expect(result.features).toHaveLength(3)
-    const names = result.features.map((f: any) => f.properties.name).sort()
-    expect(names).toEqual(['Brittany', 'Normandie', 'Île-de-France'])
-    // Original geometry preserved (not dissolved into MultiPolygon)
-    result.features.forEach((f: any) => {
-      expect(f.geometry.type).toBe('Polygon')
-    })
-  })
-
-  it('merges multi-feature regions while keeping single-feature regions as-is', () => {
+  it('region strategy: GB merges London boroughs, keeps Scotland/Wales individual', () => {
     const geojson = {
       type: 'FeatureCollection',
       features: [
@@ -629,31 +615,62 @@ describe('filterByScalerank region merging', () => {
     }
 
     const result = filterByScalerank(geojson, 9)
-    // Westminster+Camden dissolved into "Greater London", Scotland and Wales kept as-is = 3
     expect(result.features).toHaveLength(3)
     const names = result.features.map((f: any) => f.properties.name).sort()
     expect(names).toEqual(['Greater London', 'Scotland', 'Wales'])
-    // London: dissolved, Scotland/Wales: original Polygon preserved
     const london = result.features.find((f: any) => f.properties.name === 'Greater London')
-    expect(['Polygon', 'MultiPolygon']).toContain(london.geometry.type)
-    expect(london.properties.iso_a2).toBe('GB')
     expect(london.properties._merged).toBe(true)
-    const scotland = result.features.find((f: any) => f.properties.name === 'Scotland')
-    expect(scotland.geometry.type).toBe('Polygon')
   })
 
-  it('falls back to single-blob when features have no region property', () => {
+  it('none strategy: DE keeps individual subdivisions after scalerank filter', () => {
     const geojson = {
       type: 'FeatureCollection',
       features: [
-        { type: 'Feature', properties: { iso_a2: 'AD', name: 'Canillo', admin: 'Andorra', scalerank: 10 }, geometry: { type: 'Polygon', coordinates: [[[1,42],[2,42],[2,43],[1,42]]] } },
-        { type: 'Feature', properties: { iso_a2: 'AD', name: 'Encamp', admin: 'Andorra', scalerank: 10 }, geometry: { type: 'Polygon', coordinates: [[[1.5,42],[2.5,42],[2.5,43],[1.5,42]]] } },
+        { type: 'Feature', properties: { iso_a2: 'DE', name: 'Bavaria', region: 'Bavaria', scalerank: 3 }, geometry: { type: 'Polygon', coordinates: [[[11,47],[13,47],[13,49],[11,47]]] } },
+        { type: 'Feature', properties: { iso_a2: 'DE', name: 'Saxony', region: 'Saxony', scalerank: 4 }, geometry: { type: 'Polygon', coordinates: [[[12,50],[15,50],[15,52],[12,50]]] } },
+        { type: 'Feature', properties: { iso_a2: 'DE', name: 'Tiny district', region: 'Bavaria', scalerank: 10 }, geometry: { type: 'Polygon', coordinates: [[[12,48],[12.1,48],[12.1,48.1],[12,48]]] } },
+      ]
+    }
+
+    const result = filterByScalerank(geojson, 9)
+    // DE is 'none' → keep individual features, just scalerank filter (tiny district removed)
+    expect(result.features).toHaveLength(2)
+    expect(result.features.map((f: any) => f.properties.name).sort()).toEqual(['Bavaria', 'Saxony'])
+    // No merging — original geometries preserved
+    result.features.forEach((f: any) => {
+      expect(f.geometry.type).toBe('Polygon')
+      expect(f.properties._merged).toBeUndefined()
+    })
+  })
+
+  it('none strategy: unlisted countries default to no merge', () => {
+    // NL is not in any strategy list → defaults to none
+    const geojson = {
+      type: 'FeatureCollection',
+      features: [
+        { type: 'Feature', properties: { iso_a2: 'NL', name: 'Noord-Holland', region: 'West', scalerank: 5 }, geometry: { type: 'Polygon', coordinates: [[[4,52],[5,52],[5,53],[4,52]]] } },
+        { type: 'Feature', properties: { iso_a2: 'NL', name: 'Zuid-Holland', region: 'West', scalerank: 5 }, geometry: { type: 'Polygon', coordinates: [[[4,51],[5,51],[5,52],[4,51]]] } },
+      ]
+    }
+
+    const result = filterByScalerank(geojson, 9)
+    // Unlisted → 'none', keep individual subdivisions
+    expect(result.features).toHaveLength(2)
+    expect(result.features.map((f: any) => f.properties.name).sort()).toEqual(['Noord-Holland', 'Zuid-Holland'])
+  })
+
+  it('blob strategy: works even when some features pass scalerank filter', () => {
+    // LU (Luxembourg) is blob — should merge regardless
+    const geojson = {
+      type: 'FeatureCollection',
+      features: [
+        { type: 'Feature', properties: { iso_a2: 'LU', name: 'Luxembourg City', admin: 'Luxembourg', scalerank: 6 }, geometry: { type: 'Polygon', coordinates: [[[6,49],[6.5,49],[6.5,49.5],[6,49]]] } },
+        { type: 'Feature', properties: { iso_a2: 'LU', name: 'Esch', admin: 'Luxembourg', scalerank: 8 }, geometry: { type: 'Polygon', coordinates: [[[5.5,49],[6,49],[6,49.5],[5.5,49]]] } },
       ]
     }
 
     const result = filterByScalerank(geojson, 9)
     expect(result.features).toHaveLength(1)
-    expect(result.features[0].properties.name).toBe('Andorra')
-    expect(['Polygon', 'MultiPolygon']).toContain(result.features[0].geometry.type)
+    expect(result.features[0].properties.name).toBe('Luxembourg')
   })
 })
