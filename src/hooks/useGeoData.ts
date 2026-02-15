@@ -142,16 +142,9 @@ function deduplicateFeatures(geojson: any): any {
 // scalerank: lower = larger/more important, higher = smaller/less important.
 // Strategy per country:
 //   1. Keep features with scalerank <= threshold
-//   2. If ALL features exceed the threshold (e.g. SI, MT, MK), merge by region
-//   3. If kept count > MAX_FEATURES_PER_COUNTRY, merge by region (e.g. LV)
-//   4. If country is in PARTIAL_MERGE_REGIONS, merge only those region groups
+//   2. If ALL features exceed threshold, use all features for region grouping
+//   3. Always group by region: dissolve multi-feature regions, keep singles as-is
 const MAX_SCALERANK = 9;
-const MAX_FEATURES_PER_COUNTRY = 80;
-
-// Countries where specific regions should be merged even though scalerank is OK
-const PARTIAL_MERGE_REGIONS: Record<string, string[]> = {
-  'GB': ['Greater London'],
-};
 
 /**
  * Collect all polygon coordinates from an array of features into a flat list.
@@ -209,8 +202,10 @@ function mergeCountryFeatures(features: any[]): any {
 }
 
 /**
- * Merge features by their `region` property into one MultiPolygon per region.
- * Falls back to single-blob merge if features have no region or only one region.
+ * Group features by their `region` property.
+ * - Single-feature regions are kept as-is (no dissolve overhead).
+ * - Multi-feature regions are dissolved into a single clean outline.
+ * - Falls back to single-blob merge if features have no region or only one region group.
  */
 export function mergeFeaturesByRegion(features: any[]): any[] {
   const byRegion = new Map<string, any[]>();
@@ -225,18 +220,24 @@ export function mergeFeaturesByRegion(features: any[]): any[] {
     return [mergeCountryFeatures(features)];
   }
 
-  const merged: any[] = [];
+  const result: any[] = [];
   for (const [regionName, regionFeatures] of byRegion) {
-    const baseProps = { ...regionFeatures[0].properties };
-    baseProps.name = regionName;
-    baseProps._merged = true;
-    merged.push({
-      type: 'Feature',
-      properties: baseProps,
-      geometry: dissolveFeatures(regionFeatures),
-    });
+    if (regionFeatures.length === 1) {
+      // Single feature in region — keep as-is
+      result.push(regionFeatures[0]);
+    } else {
+      // Multiple features — dissolve into one
+      const baseProps = { ...regionFeatures[0].properties };
+      baseProps.name = regionName;
+      baseProps._merged = true;
+      result.push({
+        type: 'Feature',
+        properties: baseProps,
+        geometry: dissolveFeatures(regionFeatures),
+      });
+    }
   }
-  return merged;
+  return result;
 }
 
 export function filterByScalerank(geojson: any, maxScalerank: number = MAX_SCALERANK): any {
@@ -248,46 +249,12 @@ export function filterByScalerank(geojson: any, maxScalerank: number = MAX_SCALE
   }
 
   const filtered: any[] = [];
-  for (const [cc, features] of byCountry) {
+  for (const [, features] of byCountry) {
     const kept = features.filter((f: any) => (f.properties.scalerank ?? 0) <= maxScalerank);
-
-    if (kept.length === 0) {
-      // All features exceed threshold — merge by region
-      filtered.push(...mergeFeaturesByRegion(features));
-    } else if (kept.length > MAX_FEATURES_PER_COUNTRY) {
-      // Too many features — merge by region
-      filtered.push(...mergeFeaturesByRegion(kept));
-    } else if (PARTIAL_MERGE_REGIONS[cc]) {
-      // Partial merge: merge only specified region groups, keep rest as-is
-      const regionsToMerge = PARTIAL_MERGE_REGIONS[cc];
-      const toMerge = new Map<string, any[]>();
-      const toKeep: any[] = [];
-
-      for (const f of kept) {
-        const region = f.properties.region || '';
-        if (regionsToMerge.includes(region)) {
-          if (!toMerge.has(region)) toMerge.set(region, []);
-          toMerge.get(region)!.push(f);
-        } else {
-          toKeep.push(f);
-        }
-      }
-
-      filtered.push(...toKeep);
-      for (const [regionName, regionFeatures] of toMerge) {
-        const baseProps = { ...regionFeatures[0].properties };
-        baseProps.name = regionName;
-        baseProps._merged = true;
-        filtered.push({
-          type: 'Feature',
-          properties: baseProps,
-          geometry: dissolveFeatures(regionFeatures),
-        });
-      }
-    } else {
-      // Normal case — keep as-is
-      filtered.push(...kept);
-    }
+    // Use all features if none pass the scalerank filter, otherwise use the filtered set
+    const toGroup = kept.length > 0 ? kept : features;
+    // Always group by region: dissolves multi-feature regions, keeps singles as-is
+    filtered.push(...mergeFeaturesByRegion(toGroup));
   }
 
   return { ...geojson, features: filtered };

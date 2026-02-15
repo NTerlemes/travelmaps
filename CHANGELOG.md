@@ -12,7 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dissolved features styled with thicker dashed borders (`weight: 1`, `dashArray: '3 2'`) to distinguish merged from normal features
 - Region-based subdivision merging: countries with many tiny subdivisions (SI, MT, MK, AD, LI) are now merged by `region` property instead of into a single blob, preserving meaningful granularity (e.g. Slovenia → 12 statistical regions instead of 1 blob)
 - Feature-count threshold (80): countries like Latvia with 119 subdivisions under scalerank threshold are also region-merged
-- Partial merge for UK: Greater London boroughs merged into single "Greater London" feature while other UK subdivisions remain individual
+- Region grouping now applies to ALL countries: subdivisions sharing a `region` are dissolved into one feature, single-feature regions kept as-is (e.g. France stays unchanged, UK London boroughs merge, Latvia 119→5 regions)
+- Removed `PARTIAL_MERGE_REGIONS` config and `MAX_FEATURES_PER_COUNTRY` threshold — universal region grouping handles all cases
 - Country-level views (geoBoundaries) are unaffected
 
 ### Added
