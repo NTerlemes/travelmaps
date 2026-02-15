@@ -2,12 +2,15 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import App from './App'
 
+const mockLoadMap = vi.fn()
+const mockSaveMap = vi.fn()
+
 // Mock the hooks
 vi.mock('./hooks/useTravelMaps', () => ({
   useTravelMaps: () => ({
     savedMaps: [],
-    saveMap: vi.fn(),
-    loadMap: vi.fn(),
+    saveMap: mockSaveMap,
+    loadMap: mockLoadMap,
     deleteMap: vi.fn(),
   }),
 }))

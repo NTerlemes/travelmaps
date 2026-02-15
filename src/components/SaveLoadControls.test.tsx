@@ -180,4 +180,75 @@ describe('SaveLoadControls Component', () => {
 
     expect(mockProps.onDelete).toHaveBeenCalledWith('1')
   })
+
+  it('displays scope label for saved maps with country scope', () => {
+    const savedMaps: UserTravelMap[] = [
+      {
+        id: '1',
+        name: 'Greece Trip',
+        travelData: [],
+        createdAt: new Date('2024-01-01T12:00:00Z'),
+        updatedAt: new Date('2024-01-01T12:00:00Z'),
+        scope: { type: 'country', countryCode: 'GR', countryName: 'Greece' },
+        detailLevel: 'subdivisions',
+        adminLevel: 'ADM2'
+      }
+    ]
+
+    render(<SaveLoadControls {...mockProps} savedMaps={savedMaps} />)
+
+    expect(screen.getByText('Scope: Greece ADM2')).toBeInTheDocument()
+  })
+
+  it('displays scope label for world scope maps', () => {
+    const savedMaps: UserTravelMap[] = [
+      {
+        id: '1',
+        name: 'World Map',
+        travelData: [],
+        createdAt: new Date('2024-01-01T12:00:00Z'),
+        updatedAt: new Date('2024-01-01T12:00:00Z'),
+        scope: { type: 'world' },
+        detailLevel: 'countries'
+      }
+    ]
+
+    render(<SaveLoadControls {...mockProps} savedMaps={savedMaps} />)
+
+    expect(screen.getByText('Scope: World')).toBeInTheDocument()
+  })
+
+  it('displays scope label for continent scope maps', () => {
+    const savedMaps: UserTravelMap[] = [
+      {
+        id: '1',
+        name: 'Europe Trip',
+        travelData: [],
+        createdAt: new Date('2024-01-01T12:00:00Z'),
+        updatedAt: new Date('2024-01-01T12:00:00Z'),
+        scope: { type: 'continent', continent: 'Europe' },
+        detailLevel: 'countries'
+      }
+    ]
+
+    render(<SaveLoadControls {...mockProps} savedMaps={savedMaps} />)
+
+    expect(screen.getByText('Scope: Europe')).toBeInTheDocument()
+  })
+
+  it('does not display scope label for old maps without scope', () => {
+    const savedMaps: UserTravelMap[] = [
+      {
+        id: '1',
+        name: 'Old Map',
+        travelData: [],
+        createdAt: new Date('2024-01-01T12:00:00Z'),
+        updatedAt: new Date('2024-01-01T12:00:00Z')
+      }
+    ]
+
+    render(<SaveLoadControls {...mockProps} savedMaps={savedMaps} />)
+
+    expect(screen.queryByTestId('map-scope-label')).not.toBeInTheDocument()
+  })
 })

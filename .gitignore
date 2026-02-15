@@ -52,3 +52,5 @@ temp/
 
 # Screenshots / design artifacts
 current-ui.png
+.vercel
+.env*.local

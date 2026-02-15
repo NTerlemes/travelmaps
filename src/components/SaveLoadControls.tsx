@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import styled from 'styled-components';
-import { TravelData, UserTravelMap } from '../types';
+import { TravelData, UserTravelMap, MapScope } from '../types';
 
 interface SaveLoadControlsProps {
   travelData: TravelData[];
@@ -133,6 +133,24 @@ const EmptyState = styled.div`
   padding: 20px;
 `;
 
+const MapScopeLabel = styled.div`
+  font-size: 11px;
+  color: #888;
+  margin-bottom: 4px;
+`;
+
+function getScopeDisplayLabel(map: UserTravelMap): string | null {
+  if (!map.scope) return null;
+  switch (map.scope.type) {
+    case 'world': return 'World';
+    case 'continent': return map.scope.continent;
+    case 'country': {
+      const adminSuffix = map.adminLevel ? ` ${map.adminLevel}` : '';
+      return `${map.scope.countryName}${adminSuffix}`;
+    }
+  }
+}
+
 export const SaveLoadControls: React.FC<SaveLoadControlsProps> = ({
   travelData,
   savedMaps,
@@ -183,6 +201,11 @@ export const SaveLoadControls: React.FC<SaveLoadControlsProps> = ({
             savedMaps.map(map => (
               <MapItem key={map.id}>
                 <MapName>{map.name}</MapName>
+                {getScopeDisplayLabel(map) && (
+                  <MapScopeLabel data-testid="map-scope-label">
+                    Scope: {getScopeDisplayLabel(map)}
+                  </MapScopeLabel>
+                )}
                 <MapDate>
                   Saved: {formatDate(map.createdAt)}
                   {map.updatedAt > map.createdAt && (

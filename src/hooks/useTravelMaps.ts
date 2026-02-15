@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { TravelData, UserTravelMap } from '../types';
+import { TravelData, UserTravelMap, MapScope, DetailLevel, AdminLevel } from '../types';
 
 const STORAGE_KEY = 'travel-maps';
 
@@ -22,13 +22,16 @@ export const useTravelMaps = () => {
     }
   }, []);
 
-  const saveMap = useCallback((name: string, travelData: TravelData[]) => {
+  const saveMap = useCallback((name: string, travelData: TravelData[], scope?: MapScope, detailLevel?: DetailLevel, adminLevel?: AdminLevel) => {
     const newMap: UserTravelMap = {
       id: Date.now().toString(),
       name,
       travelData: [...travelData],
       createdAt: new Date(),
-      updatedAt: new Date()
+      updatedAt: new Date(),
+      scope,
+      detailLevel,
+      adminLevel
     };
 
     const updatedMaps = [...savedMaps, newMap];
@@ -38,9 +41,9 @@ export const useTravelMaps = () => {
     return newMap.id;
   }, [savedMaps]);
 
-  const loadMap = useCallback((id: string): TravelData[] | null => {
+  const loadMap = useCallback((id: string): UserTravelMap | null => {
     const map = savedMaps.find(m => m.id === id);
-    return map ? [...map.travelData] : null;
+    return map ? { ...map, travelData: [...map.travelData] } : null;
   }, [savedMaps]);
 
   const deleteMap = useCallback((id: string) => {
@@ -49,10 +52,10 @@ export const useTravelMaps = () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedMaps));
   }, [savedMaps]);
 
-  const updateMap = useCallback((id: string, travelData: TravelData[]) => {
+  const updateMap = useCallback((id: string, travelData: TravelData[], scope?: MapScope, detailLevel?: DetailLevel, adminLevel?: AdminLevel) => {
     const updatedMaps = savedMaps.map(map =>
       map.id === id
-        ? { ...map, travelData: [...travelData], updatedAt: new Date() }
+        ? { ...map, travelData: [...travelData], updatedAt: new Date(), scope, detailLevel, adminLevel }
         : map
     );
     setSavedMaps(updatedMaps);

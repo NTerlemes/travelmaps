@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useTravelMaps } from './useTravelMaps'
-import { TravelStatus } from '../types'
+import { TravelStatus, MapScope, DetailLevel, AdminLevel } from '../types'
 
 // Mock localStorage
 const mockLocalStorage = {
@@ -93,18 +93,18 @@ describe('useTravelMaps Hook', () => {
       mapId = result.current.saveMap('Test Map', travelData)
     })
 
-    const loadedData = result.current.loadMap(mapId!)
+    const loadedMap = result.current.loadMap(mapId!)
 
-    expect(loadedData).toEqual(travelData)
-    expect(loadedData).not.toBe(travelData) // Should return a copy
+    expect(loadedMap?.travelData).toEqual(travelData)
+    expect(loadedMap?.travelData).not.toBe(travelData) // Should return a copy
   })
 
   it('returns null when loading non-existent map', () => {
     const { result } = renderHook(() => useTravelMaps())
 
-    const loadedData = result.current.loadMap('non-existent-id')
+    const loadedMap = result.current.loadMap('non-existent-id')
 
-    expect(loadedData).toBeNull()
+    expect(loadedMap).toBeNull()
   })
 
   it('deletes a map correctly', () => {
@@ -171,9 +171,96 @@ describe('useTravelMaps Hook', () => {
       mapId = result.current.saveMap('Complex Map', originalData)
     })
 
-    const loadedData = result.current.loadMap(mapId!)
+    const loadedMap = result.current.loadMap(mapId!)
 
-    expect(loadedData).toEqual(originalData)
-    expect(loadedData?.[1].subdivisionCode).toBe('ON')
+    expect(loadedMap?.travelData).toEqual(originalData)
+    expect(loadedMap?.travelData[1].subdivisionCode).toBe('ON')
+  })
+
+  it('saves scope, detailLevel, and adminLevel alongside travel data', () => {
+    const { result } = renderHook(() => useTravelMaps())
+
+    const travelData = [{ countryCode: 'GR', subdivisionCode: 'ATT', status: TravelStatus.VISITED }]
+    const scope: MapScope = { type: 'country', countryCode: 'GR', countryName: 'Greece' }
+    const detailLevel: DetailLevel = 'subdivisions'
+    const adminLevel: AdminLevel = 'ADM2'
+
+    let mapId: string
+
+    act(() => {
+      mapId = result.current.saveMap('Greece Trip', travelData, scope, detailLevel, adminLevel)
+    })
+
+    expect(result.current.savedMaps[0].scope).toEqual(scope)
+    expect(result.current.savedMaps[0].detailLevel).toBe('subdivisions')
+    expect(result.current.savedMaps[0].adminLevel).toBe('ADM2')
+  })
+
+  it('returns full UserTravelMap on loadMap including context fields', () => {
+    const { result } = renderHook(() => useTravelMaps())
+
+    const travelData = [{ countryCode: 'GR', status: TravelStatus.VISITED }]
+    const scope: MapScope = { type: 'country', countryCode: 'GR', countryName: 'Greece' }
+
+    let mapId: string
+
+    act(() => {
+      mapId = result.current.saveMap('Greece', travelData, scope, 'subdivisions', 'ADM2')
+    })
+
+    const loaded = result.current.loadMap(mapId!)
+
+    expect(loaded).not.toBeNull()
+    expect(loaded?.scope).toEqual(scope)
+    expect(loaded?.detailLevel).toBe('subdivisions')
+    expect(loaded?.adminLevel).toBe('ADM2')
+    expect(loaded?.travelData).toEqual(travelData)
+  })
+
+  it('saves context fields via updateMap', () => {
+    const { result } = renderHook(() => useTravelMaps())
+
+    const travelData = [{ countryCode: 'US', status: TravelStatus.VISITED }]
+
+    let mapId: string
+
+    act(() => {
+      mapId = result.current.saveMap('World Map', travelData)
+    })
+
+    const updatedData = [
+      { countryCode: 'US', status: TravelStatus.VISITED },
+      { countryCode: 'CA', status: TravelStatus.LIVED }
+    ]
+    const scope: MapScope = { type: 'world' }
+
+    act(() => {
+      result.current.updateMap(mapId!, updatedData, scope, 'countries', 'ADM1')
+    })
+
+    expect(result.current.savedMaps[0].scope).toEqual({ type: 'world' })
+    expect(result.current.savedMaps[0].detailLevel).toBe('countries')
+    expect(result.current.savedMaps[0].adminLevel).toBe('ADM1')
+  })
+
+  it('handles loading old maps without scope fields gracefully', () => {
+    const { result } = renderHook(() => useTravelMaps())
+
+    const travelData = [{ countryCode: 'US', status: TravelStatus.VISITED }]
+
+    let mapId: string
+
+    act(() => {
+      // Save without context fields (simulates old maps)
+      mapId = result.current.saveMap('Old Map', travelData)
+    })
+
+    const loaded = result.current.loadMap(mapId!)
+
+    expect(loaded).not.toBeNull()
+    expect(loaded?.scope).toBeUndefined()
+    expect(loaded?.detailLevel).toBeUndefined()
+    expect(loaded?.adminLevel).toBeUndefined()
+    expect(loaded?.travelData).toEqual(travelData)
   })
 })

@@ -120,7 +120,7 @@ function App() {
 
   const handleSaveMap = (name: string) => {
     try {
-      saveMap(name, travelData);
+      saveMap(name, travelData, mapScope!, detailLevel, adminLevel);
       showSuccess(`Map "${name}" saved successfully!`);
     } catch (error) {
       showError('Failed to save map. Please try again.');
@@ -130,11 +130,18 @@ function App() {
 
   const handleLoadMap = (mapId: string) => {
     try {
-      const loadedData = loadMap(mapId);
-      if (loadedData) {
-        setTravelData(loadedData);
-        const mapName = savedMaps.find(m => m.id === mapId)?.name || 'Saved map';
-        showSuccess(`Loaded "${mapName}" successfully!`);
+      const loadedMap = loadMap(mapId);
+      if (loadedMap) {
+        setTravelData(loadedMap.travelData);
+
+        if (loadedMap.scope) {
+          setMapScope(loadedMap.scope);
+          setDetailLevel(loadedMap.detailLevel || (loadedMap.scope.type === 'country' ? 'subdivisions' : 'countries'));
+          setAdminLevel(loadedMap.adminLevel || 'ADM1');
+          setCurrentPage('map');
+        }
+
+        showSuccess(`Loaded "${loadedMap.name}" successfully!`);
       } else {
         showError('Failed to load map. Map data not found.');
       }

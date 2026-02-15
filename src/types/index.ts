@@ -30,6 +30,9 @@ export interface UserTravelMap {
   travelData: TravelData[];
   createdAt: Date;
   updatedAt: Date;
+  scope?: MapScope;
+  detailLevel?: DetailLevel;
+  adminLevel?: AdminLevel;
 }
 
 export interface MapColors {
